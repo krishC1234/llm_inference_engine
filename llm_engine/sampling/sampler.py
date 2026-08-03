@@ -32,7 +32,7 @@ class Sampler:
             else: temp-scale -> top_k filter -> top_p filter -> softmax
                   -> torch.multinomial(probs, 1) -> int(token)
         """
-        raise NotImplementedError("Phase 1, step 4: implement Sampler.sample()")
+        return int(logits.argmax()) # TODO: We need to change this away from greedy
 
     def _apply_temperature(self, logits: torch.Tensor, temperature: float) -> torch.Tensor:
         """logits: [vocab] -> [vocab], scaled before softmax (divide by temperature)."""

@@ -27,7 +27,16 @@ def generate_naive(runner: ModelRunner, prompt: str, params: SamplingParams) -> 
             ids = torch.cat([ids, tensor([tok])])
         return runner.tokenizer.decode(ids[T0:])      # decode only the new tokens
     """
-    raise NotImplementedError("Phase 1, step 6: implement generate_naive()")
+    ids = torch.tensor(runner.tokenizer.encode(prompt), device=runner.device)
+    t0 = len(ids)
+    sampler = Sampler() 
+    for _ in range(params.max_tokens):
+        logits = runner.forward(ids)
+        token = sampler.sample(logits[-1], params)
+        if token == params.stop_token_id:
+            break
+        ids = torch.cat([ids, torch.tensor(token)])
+    return runner.tokenizer.decode(ids[t0:])
 
 
 def bench_baseline(runner: ModelRunner, prompt: str, params: SamplingParams) -> dict:

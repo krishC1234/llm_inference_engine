@@ -10,6 +10,7 @@ from __future__ import annotations
 import torch
 
 from ..config import ModelConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class ModelRunner:
@@ -23,17 +24,25 @@ class ModelRunner:
 
     @classmethod
     def load(cls, model_name: str, device: str = "cuda") -> "ModelRunner":
-        """Load tokenizer + fp16 weights to GPU; build ModelConfig.from_hf().
+        """Build a ready-to-run ModelRunner for a HuggingFace model.
 
-        TODO (step 2):
-            model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=fp16)
-                        .to(device).eval()
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            config = ModelConfig.from_hf(model_name)
-            print(torch.cuda.memory_allocated()) -> expect ~2.2 GB for TinyLlama fp16
-            return cls(model, config, tokenizer, device)
+        Reads the model's dimensions into a ModelConfig, downloads the fp16
+        weights and tokenizer, moves the weights onto `device`, and puts the
+        model in inference (eval) mode. The first call downloads the weights
+        into the local HF cache (~2.2 GB for TinyLlama); later calls reuse it.
+
+        Args:
+            model_name: HuggingFace model id, e.g. "TinyLlama/TinyLlama-1.1B-Chat-v1.0".
+            device: where to place the weights ("cuda" on the T4; "cpu"/"mps" locally).
+
+        Returns:
+            A ModelRunner holding the loaded model, its ModelConfig, and tokenizer.
         """
-        raise NotImplementedError("Phase 1, step 2: implement ModelRunner.load()")
+        config = ModelConfig.from_hf(model_name)
+        model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=config.dtype).to(device).eval()
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        print(torch.cuda.memory_allocated() / 1e9) # Get the memory used by model ~ 2.2 GB
+        return cls(model, config, tokenizer, device)
 
     @torch.no_grad()
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
@@ -44,4 +53,6 @@ class ModelRunner:
         return logits[0] (drop it). Assert output shape == (seq_len, vocab_size)
         BEFORE you write any generation loop.
         """
-        raise NotImplementedError("Phase 1, step 3: implement ModelRunner.forward()")
+        ids = input_ids.to(self.device)
+        out = self.model(ids[None])
+        return out.logits[0]
