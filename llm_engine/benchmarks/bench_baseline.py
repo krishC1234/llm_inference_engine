@@ -35,7 +35,7 @@ def generate_naive(runner: ModelRunner, prompt: str, params: SamplingParams) -> 
         token = sampler.sample(logits[-1], params)
         if token == params.stop_token_id:
             break
-        ids = torch.cat([ids, torch.tensor(token)])
+        ids = torch.cat([ids, torch.tensor([token], device=runner.device)])
     return runner.tokenizer.decode(ids[t0:])
 
 
