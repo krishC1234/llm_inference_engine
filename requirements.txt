@@ -1,5 +1,4 @@
 # Phase 1 dependencies (install on the T4 box; torch build must match its CUDA)
-torch>=2.1
 transformers>=4.40
 accelerate>=0.30
 sentencepiece>=0.2   # TinyLlama uses a Llama/SentencePiece tokenizer
