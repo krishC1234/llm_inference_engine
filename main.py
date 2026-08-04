@@ -10,7 +10,7 @@ Type 'quit' (or press Ctrl-C) to exit.
 """
 from llm_engine.model.runner import ModelRunner
 from llm_engine.sampling.sampler import SamplingParams
-from llm_engine.benchmarks.bench_baseline import generate_naive
+from llm_engine.benchmarks.bench_baseline import generate_naive, bench_baseline, plot_latency
 
 MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
@@ -33,8 +33,12 @@ def main():
         # switch to sampling once _top_k/_top_p are done (steps 4-5):
         #   params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=128, ...)
 
-        output = generate_naive(runner, prompt, params)   # step 6
-        print(f"\n{output}\n")
+        print(generate_naive(runner, prompt, params))
+
+        result = bench_baseline(runner, prompt, params)
+        print(f"\nthroughput: {result['tokens_per_sec']:.1f} tok/s "
+              f"over {len(result['per_step_latency_ms'])} steps")
+        plot_latency(result, start_len=len(runner.tokenizer.encode(prompt)))
 
 
 if __name__ == "__main__":

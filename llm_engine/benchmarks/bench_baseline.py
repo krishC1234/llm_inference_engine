@@ -8,7 +8,9 @@ Lab: plans/phase-1-baseline.md  (Build order steps 6-8)
 """
 from __future__ import annotations
 
-import torch
+import torch, time, matplotlib
+matplotlib.use("Agg")            # no display over SSH — render straight to a file
+import matplotlib.pyplot as plt
 
 from ..model.runner import ModelRunner
 from ..sampling.sampler import Sampler, SamplingParams
@@ -40,22 +42,72 @@ def generate_naive(runner: ModelRunner, prompt: str, params: SamplingParams) -> 
 
 
 def bench_baseline(runner: ModelRunner, prompt: str, params: SamplingParams) -> dict:
-    """{tokens_per_sec, per_step_latency_ms:[...]}. Warm up + torch.cuda.synchronize().
+    """Measure the performance of the naive (no-cache) generation baseline.
 
-    TODO (step 7):
-        - run one discarded warm-up generate_naive() before timing (first CUDA launch
-          pays a one-time cost)
-        - torch.cuda.synchronize() before every timer stop (GPU work is async)
-        - record per-step latency alongside the current sequence length
-        - report tokens_per_sec over the DECODE phase only
+    Purpose: run generate_naive and quantify two things — overall throughput
+    (tokens/sec) and how per-token latency grows as the sequence gets longer.
+    Together these make the O(n^2) cost of recomputing the whole sequence every
+    step *visible* — establishing the concrete Phase 1 numbers that Phase 2's KV
+    cache (and every later phase) will be measured against. Without a baseline to
+    beat, "faster" is meaningless; this is that baseline.
+
+    Uses a warm-up run and torch.cuda.synchronize() so the GPU timings are
+    accurate (the first CUDA launch is slow, and GPU work is asynchronous).
+
+    Returns:
+        {"tokens_per_sec": float, "per_step_latency_ms": [float, ...]}
     """
-    raise NotImplementedError("Phase 1, step 7: implement bench_baseline()")
+    ids = torch.tensor(runner.tokenizer.encode(prompt), device=runner.device)
+    sampler = Sampler() 
+
+    # Warmup so that the first latency run doesn't eat up extra timing
+    runner.forward(ids)
+    torch.cuda.synchronize()
+
+    per_step_latency_ms = []
+    for _ in range(params.max_tokens):
+        start_time = time.perf_counter()
+        logits = runner.forward(ids)
+        torch.cuda.synchronize() 
+        time_taken = (time.perf_counter() - start_time) * 1000 
+        per_step_latency_ms.append(time_taken)
+        token = sampler.sample(logits[-1], params)
+        if token == params.stop_token_id:
+            break
+        ids = torch.cat([ids, torch.tensor([token], device=runner.device)])
+    total_sec = sum(per_step_latency_ms) / 1000
+    return {
+        "tokens_per_sec": len(per_step_latency_ms) / total_sec,
+        "per_step_latency_ms": per_step_latency_ms
+    }
 
 
-if __name__ == "__main__":
-    # Smoke entry point. Fill in the TODOs above, then run:
-    #   python -m llm_engine.benchmarks.bench_baseline
-    runner = ModelRunner.load("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-    params = SamplingParams(temperature=0.0, max_tokens=128)
-    print(generate_naive(runner, "The key idea behind PagedAttention is", params))
-    print(bench_baseline(runner, "Once upon a time,", params))
+def plot_latency(result: dict, out: str = "baseline_latency.png", start_len: int = 0) -> str:
+    """Plot per-step latency vs sequence length and save to `out` (a PNG).
+
+    Headless-safe: forces the non-interactive 'Agg' backend and writes a file,
+    so it works over SSH on the GPU box (no display, no `plt.show()`).
+
+    Args:
+        result: the dict returned by bench_baseline (needs "per_step_latency_ms").
+        out: path to write the PNG to.
+        start_len: offsets the x-axis to the TRUE sequence length. Pass the prompt's
+            token count to plot vs length; default 0 plots vs decode-step index.
+
+    Returns:
+        The path written (download it with scp to view).
+    """
+
+    latencies = result["per_step_latency_ms"]
+    x = [start_len + i for i in range(len(latencies))]
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(x, latencies, marker=".", linewidth=1)
+    plt.xlabel("sequence length (tokens)" if start_len else "decode step")
+    plt.ylabel("per-step latency (ms)")
+    plt.title("Naive baseline: per-step latency rises with length (O(n²) total)")
+    plt.grid(True, alpha=0.3)
+    plt.savefig(out, dpi=120, bbox_inches="tight")
+    plt.close()
+    print(f"saved plot -> {out}")
+    return out
