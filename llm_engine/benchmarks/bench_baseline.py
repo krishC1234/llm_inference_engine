@@ -105,7 +105,39 @@ def plot_latency(result: dict, out: str = "baseline_latency.png", start_len: int
     plt.plot(x, latencies, marker=".", linewidth=1)
     plt.xlabel("sequence length (tokens)" if start_len else "decode step")
     plt.ylabel("per-step latency (ms)")
-    plt.title("Naive baseline: per-step latency rises with length (O(n²) total)")
+    plt.title("Naive baseline: per-step latency (O(N) per step)")
+    plt.grid(True, alpha=0.3)
+    plt.savefig(out, dpi=120, bbox_inches="tight")
+    plt.close()
+    print(f"saved plot -> {out}")
+    return out
+
+
+def plot_cumulative_latency(result: dict, out: str = "baseline_cumulative.png",
+                            start_len: int = 0) -> str:
+    """Plot CUMULATIVE generation time vs sequence length — the O(N²) curve.
+
+    This is the running total of the per-step latencies (the area under the
+    per-step curve). Because each step's cost grows with length, the total bends
+    upward into a parabola — the direct visual proof that naive (no-cache)
+    generation is O(N²).
+
+    Headless-safe (Agg backend, writes a PNG). Returns the path written.
+    """
+    from itertools import accumulate
+    import matplotlib
+    matplotlib.use("Agg")            # no display over SSH — render straight to a file
+    import matplotlib.pyplot as plt
+
+    latencies = result["per_step_latency_ms"]
+    cumulative_s = [ms / 1000 for ms in accumulate(latencies)]   # ms -> running total in seconds
+    x = [start_len + i for i in range(len(latencies))]
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(x, cumulative_s, linewidth=1.5)
+    plt.xlabel("sequence length (tokens)" if start_len else "decode step")
+    plt.ylabel("cumulative time (s)")
+    plt.title("Naive baseline: cumulative generation time (O(N²))")
     plt.grid(True, alpha=0.3)
     plt.savefig(out, dpi=120, bbox_inches="tight")
     plt.close()
