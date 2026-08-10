@@ -1,10 +1,4 @@
-"""Sampling — Phase 1.
-
-Turn one row of logits ([vocab]) into the next token id. Greedy first, then the
-temperature / top-k / top-p (nucleus) knobs a serving system exposes per request.
-
-Lab: plans/phase-1-baseline.md  (Build order steps 4-5)
-"""
+"""Sampling — turn one logits row into a next-token id (greedy / temp / top-k / top-p)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +8,7 @@ import torch
 
 @dataclass
 class SamplingParams:
-    temperature: float = 1.0     # 0.0 => greedy
+    temperature: float = 1.0     
     top_k: int | None = None
     top_p: float | None = None
     max_tokens: int = 128
@@ -25,23 +19,37 @@ class Sampler:
     """Stateless; one `sample()` call produces one token id."""
 
     def sample(self, logits: torch.Tensor, params: SamplingParams) -> int:
-        """logits: [vocab] for ONE position -> next token id.
+        """logits: [vocab] -> next token id. temp==0 is greedy."""
+        if params.temperature == 0.0:
+            return int(logits.argmax())
+        logits = self._apply_temperature(logits, params.temperature)
+        if params.top_k:
+            logits = self._top_k_filter(logits, params.top_k)
+        if params.top_p:
+            logits = self._top_p_filter(logits, params.top_p)
+        probs = torch.softmax(logits, -1)
+        return int(torch.multinomial(probs, 1))
 
-        TODO (step 4-5):
-            if params.temperature == 0.0: return int(logits.argmax())      # greedy
-            else: temp-scale -> top_k filter -> top_p filter -> softmax
-                  -> torch.multinomial(probs, 1) -> int(token)
-        """
-        return int(logits.argmax()) # TODO: We need to change this away from greedy
 
     def _apply_temperature(self, logits: torch.Tensor, temperature: float) -> torch.Tensor:
-        """logits: [vocab] -> [vocab], scaled before softmax (divide by temperature)."""
-        raise NotImplementedError
+        """Scale logits before softmax: <1 sharpens, >1 flattens."""
+        return logits / temperature
 
     def _top_k_filter(self, logits: torch.Tensor, k: int) -> torch.Tensor:
-        """Keep k highest; mask the rest to -inf. logits: [vocab] -> [vocab]."""
-        raise NotImplementedError
+        """Keep the k highest logits; mask the rest to -inf."""
+        threshold = torch.topk(logits, k).values[-1]
+        logits = logits.clone()
+        logits[logits < threshold] = float("-inf")
+        return logits
 
     def _top_p_filter(self, logits: torch.Tensor, p: float) -> torch.Tensor:
-        """Nucleus: keep smallest set with cumprob >= p. logits: [vocab] -> [vocab]."""
-        raise NotImplementedError
+        """Nucleus: keep the smallest set of tokens with cumprob >= p; mask the rest."""
+        sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+        probs = torch.softmax(sorted_logits, dim=-1)
+        cumprobs = torch.cumsum(probs, dim=-1)
+        remove_sorted = (cumprobs - probs) >= p        # exclusive prefix keeps the crossing token
+        remove = torch.zeros_like(remove_sorted)
+        remove.scatter_(-1, sorted_idx, remove_sorted)
+        logits = logits.clone()
+        logits[remove] = float("-inf")
+        return logits
