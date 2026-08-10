@@ -1,0 +1,31 @@
+# Extraneous Folders for Planning, Visualizations (not for public Git repo)
+plans/
+diagrams/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Secrets / config
+.env
+*.key
+*.pem
+
+# Model weights & large artifacts
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.gguf
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
