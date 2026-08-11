@@ -12,7 +12,7 @@ class ModelConfig:
     n_layers: int
     hidden_size: int
     n_heads: int
-    n_kv_heads: int              # GQA; falls back to n_heads if absent
+    n_kv_heads: int              
     head_dim: int
     vocab_size: int
     max_position: int
