@@ -16,12 +16,14 @@ class KVCache:
 
     def append(self, layer: int, k: torch.Tensor, v: torch.Tensor) -> None:
         """Write this layer's k,v for the new token at slot [length]. k,v: [n_kv_heads, 1, head_dim]."""
+        # TODO (step 5.5): generalize for prefill — accept a chunk k,v: [n_kv_heads, seq, head_dim]
+        #                  and write into [length : length + seq] so one call covers the whole prompt.
         self.kv[layer, 0, :, self._length, :] = k.squeeze(1)
         self.kv[layer, 1, :, self._length, :] = v.squeeze(1)
 
-    def advance(self) -> None:
-        """Commit one token: advance the fill pointer (call once per token, after all layers)."""
-        self._length += 1
+    def advance(self, n: int = 1) -> None:
+        """Commit tokens: advance the fill pointer by n (1 per decode step, prompt_len in prefill)."""
+        self._length += n
 
     def get(self, layer: int) -> tuple[torch.Tensor, torch.Tensor]:
         """K,V up to current length: each [n_kv_heads, length, head_dim]."""

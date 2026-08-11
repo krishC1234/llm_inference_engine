@@ -4,7 +4,19 @@ from __future__ import annotations
 import torch, time
 
 from ..model.runner import ModelRunner
+from ..cache.kv_cache import KVCache
 from ..sampling.sampler import Sampler, SamplingParams
+
+
+def generate_cached(runner: ModelRunner, prompt: str, params: SamplingParams) -> str:
+    """Prefill the prompt, then loop decode_step, sampling each next token with the P1 Sampler."""
+    # TODO (step 9a):
+    #   9a.1 Tokenize the prompt; make a fresh KVCache sized to the max sequence length.
+    #   9a.2 Prefill to fill the cache and get the first next-token logits.
+    #   9a.3 Loop: sample a token (reuse Sampler); stop on the stop token or max_tokens; otherwise
+    #        decode_step to produce the next logits.
+    #   9a.4 Decode the generated token ids back to text.
+    ...
 
 
 def bench_kv(runner: ModelRunner, prompt: str, params: SamplingParams) -> dict:
