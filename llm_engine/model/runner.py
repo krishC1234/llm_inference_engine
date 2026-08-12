@@ -33,23 +33,30 @@ class ModelRunner:
         return out.logits[0]
 
     @torch.no_grad()
-    def prefill(self, input_ids: torch.Tensor, cache: KVCache) -> torch.Tensor:
-        """Whole prompt in one pass, fill the cache at every layer -> last-position logits: [vocab]."""
+    def _forward_cached(self, input_ids: torch.Tensor, cache: KVCache,
+                        positions: torch.Tensor, causal: bool) -> torch.Tensor:
+        """Shared cached forward for any number of tokens -> logits: [seq_len, vocab].
+
+        prefill and decode_step both delegate here; they differ only in positions/causal/length.
+        """
         # TODO (step 7):
-        #   7.1 Embed the prompt tokens; their positions are 0..prompt_len-1.
-        #   7.2 For each layer: norm, project Q/K/V for ALL prompt tokens, apply RoPE at the true
-        #       positions, write K/V into the cache, and attend causally (each token sees only earlier ones).
+        #   7.1 Embed the input tokens.
+        #   7.2 For each layer: norm, project Q/K/V, apply RoPE at `positions`, append K/V to the cache,
+        #       and attend over the cached K/V with the given `causal` flag.
         #   7.3 Finish each layer as usual (output projection + residual, then MLP + residual).
-        #   7.4 Final norm + lm_head; return ONLY the last position's logits — the prompt is already known.
+        #   7.4 Final norm + lm_head; advance the cache by the number of new tokens; return all-position logits.
+        ...
+
+    @torch.no_grad()
+    def prefill(self, input_ids: torch.Tensor, cache: KVCache) -> torch.Tensor:
+        """Whole prompt in one pass -> last-position logits: [vocab]. Positions 0..prompt_len-1, causal."""
+        # TODO (step 8a): give the prompt its absolute positions, run the shared forward causally,
+        #                 and hand back only the next-token distribution.
         ...
 
     @torch.no_grad()
     def decode_step(self, token_id: int, cache: KVCache) -> torch.Tensor:
-        """One new token, append its K/V, attend over the whole cache -> next-token logits: [vocab]."""
-        # TODO (step 8):
-        #   8.1 Embed the single token; its RoPE position is the current cache length (the true absolute index).
-        #   8.2 For each layer: project Q/K/V for this one token, apply RoPE, append its K/V to the cache,
-        #       and attend the new query over ALL cached K/V.
-        #   8.3 Finish each layer (output projection + residual, MLP + residual), same as prefill.
-        #   8.4 Commit the token in the cache; final norm + lm_head; return the logits.
+        """One new token, attend over the whole cache -> next-token logits: [vocab]. Position = cache.length."""
+        # TODO (step 8b): place the single new token at its true position (continuing after the prompt),
+        #                 run the shared forward over the whole cache, and hand back the next-token logits.
         ...

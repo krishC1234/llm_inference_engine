@@ -10,13 +10,23 @@ from ..sampling.sampler import Sampler, SamplingParams
 
 def generate_cached(runner: ModelRunner, prompt: str, params: SamplingParams) -> str:
     """Prefill the prompt, then loop decode_step, sampling each next token with the P1 Sampler."""
-    # TODO (step 9a):
-    #   9a.1 Tokenize the prompt; make a fresh KVCache sized to the max sequence length.
-    #   9a.2 Prefill to fill the cache and get the first next-token logits.
-    #   9a.3 Loop: sample a token (reuse Sampler); stop on the stop token or max_tokens; otherwise
-    #        decode_step to produce the next logits.
-    #   9a.4 Decode the generated token ids back to text.
-    ...
+    ids_out = []
+    ids = torch.tensor(runner.tokenizer.encode(prompt), device=runner.device)
+    kv_cache = KVCache(runner.config, runner.config.max_position, device=runner.device)
+    sampler = Sampler()
+
+    # prefill the prompt, then sample the first token
+    logits = runner.prefill(ids, kv_cache)
+    ids_out.append(sampler.sample(logits, params))
+
+    # decode one token at a time until EOS or max_tokens
+    for _ in range(params.max_tokens):
+        logits = runner.decode_step(ids_out[-1], kv_cache)
+        next_token = sampler.sample(logits, params)
+        if next_token == params.stop_token_id:
+            break
+        ids_out.append(next_token)
+    return runner.tokenizer.decode(ids_out)
 
 
 def bench_kv(runner: ModelRunner, prompt: str, params: SamplingParams) -> dict:
